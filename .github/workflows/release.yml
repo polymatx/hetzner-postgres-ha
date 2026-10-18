@@ -1,0 +1,40 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: GitHub Releases
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Publish missing releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          latest=$(git tag -l 'v*' --sort=v:refname | tail -n 1)
+          for tag in $(git tag -l 'v*' --sort=v:refname); do
+            if gh release view "$tag" >/dev/null 2>&1; then
+              continue
+            fi
+            awk -v ver="${tag#v}" '
+              index($0, "## [" ver "]") == 1 { found = 1; next }
+              found && /^## \[/ { exit }
+              found && /^\[[0-9]/ { next }
+              found { print }
+            ' CHANGELOG.md > release-notes.md
+            if [ "$tag" = "$latest" ]; then latest_flag=--latest; else latest_flag=--latest=false; fi
+            if grep -q . release-notes.md; then
+              gh release create "$tag" --title "$tag" --notes-file release-notes.md --verify-tag "$latest_flag"
+            else
+              gh release create "$tag" --title "$tag" --generate-notes --verify-tag "$latest_flag"
+            fi
+          done
