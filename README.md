@@ -18,13 +18,13 @@ make up
 It automates the architecture from
 [Postgres High Availability on Hetzner, Step by Step](https://polymatx.dev/blog/posts/postgres-ha-patroni-hetzner/),
 the procedure behind a production billing database that has been through ten real leader changes.
-The whole stack is tested in CI on every commit, in Docker, without spending money on Hetzner.
+The whole stack is tested in CI on every commit, in Docker, without spending money on Hetzner, and the failover test has been run against real Hetzner servers.
 
 ## What you get
 
 | | |
 |---|---|
-| Failover | Automatic, about 35 s from a dead leader to a new one; the load balancer follows within one health check |
+| Failover | Automatic: a new leader 20 to 33 s after the leader dies (24 s in the run below on Hetzner), applications writing again a few seconds later |
 | Data loss | None for acknowledged commits while a synchronous standby is up (synchronous replication, `strict: off`) |
 | Split brain | Leader lease in a 3-member etcd cluster, plus the kernel watchdog that resets a hung leader before its lease expires |
 | Routing | One private address for the app; the load balancer sends traffic only to the node that answers `200` on Patroni's `/primary` |
@@ -81,7 +81,7 @@ You need Terraform 1.9 or newer, Python 3.12 or newer (Ansible's requirement; on
    make up
    ```
 
-   Edit `terraform/terraform.tfvars` before `make up`: put your SSH public key in `ssh_public_keys` and the S3 keys in `backup_s3_access_key` / `backup_s3_secret_key`. `make up` creates a Python virtualenv with Ansible, shows the Terraform plan and asks for confirmation, then configures the nodes. It takes about ten minutes.
+   Edit `terraform/terraform.tfvars` before `make up`: put your SSH public key in `ssh_public_keys` (or, if that key is already in your Hetzner project, its name in `ssh_key_names`; Hetzner refuses to store the same key twice) and the S3 keys in `backup_s3_access_key` / `backup_s3_secret_key`. Instead of exporting the token in every shell you can put `HCLOUD_TOKEN=...` in a `.env` file at the top of the repository; the Makefile reads it and git ignores it. `make up` creates a Python virtualenv with Ansible, shows the Terraform plan and asks for confirmation, then configures the nodes. It takes about six minutes (Terraform 1.5, Ansible 3.5 in the test run).
 
 4. Look at it and break it:
 
@@ -105,57 +105,62 @@ You need Terraform 1.9 or newer, Python 3.12 or newer (Ansible's requirement; on
 
 ## Cost
 
-Monthly prices in euros, excluding VAT, for the default configuration in Germany or Finland, from Hetzner's price list after the April and June 2026 price changes (checked October 2026). Hetzner bills by the hour up to the monthly price.
+Monthly prices in euros, excluding VAT, for the default configuration in Germany or Finland, from the Hetzner Cloud API price list on 18 October 2026 (after the April and June 2026 price changes). The API does not list Object Storage; that price is from Hetzner's website. Hetzner bills by the hour up to the monthly price.
 
 | Item | Default | €/month |
 |---|---|---|
 | 3 database nodes | CPX22: 2 vCPU, 4 GB RAM, 80 GB NVMe, IPv4 included | 59.97 |
-| Load balancer | LB11, private network only | 7.49 |
+| Load balancer | LB11, private network only | 6.99 |
 | 3 Volumes for PGDATA | 20 GB each at €0.0572/GB | 3.43 |
 | Object Storage | base price, includes 1 TB storage and 1 TB egress | 6.49 |
-| **Total** | | **77.38** |
+| **Total** | | **76.88** |
 
-Bigger nodes: three CPX32 (4 vCPU, 8 GB) bring the total to €125.38, three CPX42 (8 vCPU, 16 GB) to €227.38. The cheaper Cost-Optimized types (CX23 at €5.99, CAX11 at €6.49) would cut the total to about €35, but Hetzner marks them as unavailable at the time of writing; set `server_type = "cx23"` when they are back. Trying the cluster for an hour costs roughly €0.10 to €0.15.
+Bigger nodes: three CPX32 (4 vCPU, 8 GB) bring the total to €124.88, three CPX42 (8 vCPU, 16 GB) to €226.88. The Cost-Optimized CX23 (2 vCPU, 4 GB, €5.99 with IPv4) cuts the total to €34.88 with `server_type = "cx23"`; Hetzner's website marks that line as unavailable, but the API reported CX23 as orderable in fsn1, nbg1 and hel1 when this was written. Running the cluster for an hour costs about €0.12.
 
 ## Failover demo
 
-`make failover-test` picks a replica, writes a row every 0.2 s from it through the load balancer and PgBouncer, powers off the leader (Hetzner API `poweroff`, the same as pulling the plug), and then checks that a new leader takes over, that writes resume, that every acknowledged row is still there, and that the old leader rejoins as a replica when it is powered back on. This is a run of the same command in the Docker test environment:
+`make failover-test` picks a replica, writes a row every 0.2 s from it through the load balancer and PgBouncer, powers off the leader through the Hetzner API (the same as pulling the plug), and then checks that a new leader takes over, that writes resume, that every acknowledged row is still there, and that the old leader rejoins as a replica when it is powered back on. Times count from the last write the old leader acknowledged, because Hetzner's power-off action takes several seconds to report completion and the moment the server dies is somewhere in between.
+
+This run is on real Hetzner servers (three CPX22 in hel1, 18 October 2026), after two earlier failovers had already moved the leader around:
 
 ```
 Cluster before the test:
   member         role           state        TL       lag
-  pg-ha-1        leader         running       1
-  pg-ha-2        replica        streaming     1         0
-  pg-ha-3        sync_standby   streaming     1         0
+  pg-ha-1        sync_standby   streaming     3         0
+  pg-ha-2        replica        streaming     3         0
+  pg-ha-3        leader         running       3
 
-Writing a row every 0.2 s from pg-ha-2 through the load balancer (10.77.0.10:6432).
-10 writes acknowledged. Powering off the leader pg-ha-1 now.
+Writing a row every 0.2 s from pg-ha-2 through the load balancer (10.0.0.10:6432).
+10 writes acknowledged. Powering off the leader pg-ha-3 now.
+Waiting for a new leader and for writes to resume...
 
-[   2.2s] first failed write: psql: error: connection to server at "10.77.0.10", port 6432 failed: timeout expired
-[  35.5s] pg-ha-3 is the new leader
-[  36.6s] writes are succeeding again
+Timeline (0 s = the last write pg-ha-3 acknowledged):
+[   0.0s] last acknowledged write before the outage
+[   2.2s] first failed write: psql: error: connection to server at "10.0.0.10", port 6432 failed: timeout expired
+[  24.2s] pg-ha-1 is the new leader
+[  26.6s] writes are succeeding again
 
-Powering pg-ha-1 back on and waiting for it to rejoin as a replica...
+Powering pg-ha-3 back on and waiting for it to rejoin as a replica...
 
 Cluster after the test:
   member         role           state        TL       lag
-  pg-ha-1        replica        streaming     2         0
-  pg-ha-2        sync_standby   streaming     2         0
-  pg-ha-3        leader         running       2
+  pg-ha-1        leader         running       4
+  pg-ha-2        sync_standby   streaming     4         0
+  pg-ha-3        replica        streaming     4         0
 
 Result
-  killed leader          pg-ha-1 (timeline 1)
-  new leader             pg-ha-3 after 35.5 s
-  writes resumed after   36.6 s (longest gap between acknowledged writes 36.6 s)
-  writes                 32 acknowledged, 112 failed
+  killed leader          pg-ha-3 (timeline 3)
+  new leader             pg-ha-1, 24.2 s after the outage began
+  writes resumed after   26.6 s
+  writes                 69 acknowledged, 66 failed
   acknowledged but lost  0
-  old leader rejoined    after 4.2 s as replica
-  pgbouncer reconciler   2026-10-18 00:12:45 role=replica -> restarted pgbouncer
+  old leader rejoined    after 20.0 s as replica
+  pgbouncer reconciler   2026-10-18 00:39:47 role=replica -> restarted pgbouncer
 
 PASS: the cluster failed over, writes continued and no acknowledged write was lost.
 ```
 
-The time is dominated by the 30 s leader TTL. On real Hetzner servers the blog post measured the new leader at 33 s and applications writing again at about 40 s; the old leader takes longer to rejoin there than in Docker because the server has to boot. A planned switchover (`patronictl switchover`) takes about 10 s.
+The leader renews its 30 s lease every 10 s, so the lease runs out between 20 and 30 s after the leader dies, depending on when it last renewed; the two earlier runs on the same cluster measured about 33 s to the new leader and 38 to 40 s until writes resumed, the same as the blog post's production cluster. The extra seconds after the new leader appears are the load balancer's health check (every 3 s) noticing it. A planned switchover (`patronictl switchover`) takes about 10 s.
 
 ## Backups and restores
 
@@ -210,12 +215,12 @@ The roles follow the blog post. These are the differences and why:
 | `en_US.UTF-8` libc collation | Builtin `C.UTF-8` provider (PostgreSQL 17+) | Sort order no longer depends on the glibc version, so an OS upgrade or a replica on a newer image cannot silently corrupt text indexes. Text sorts by code point |
 | Unauthenticated Patroni REST API | Basic auth on the REST API's write endpoints | Health checks stay open; switchover, restart and config changes need the password |
 | Unencrypted repository | pgBackRest `aes-256-cbc` | Backups leave the private network |
-| Netplan step for the private NIC | Not needed | Servers are created already attached to the network, so cloud-init configures the interface |
+| Netplan step for the private NIC | Kept, matched by the MAC address Terraform reports | On fresh servers cloud-init configured the private interface on only one of three nodes; the netplan file makes it deterministic and survives reboots |
 | | Read-only replica service on port 5433 | Free with a third node |
 
 Kept as in the post: `ttl 30 / loop_wait 10 / retry_timeout 10`, `synchronous_mode: on` with `strict: off`, the watchdog with a 5 s safety margin, the load balancer health check (`/primary`, every 3 s, 2 retries), the PgBouncer settings and its `Restart=always` drop-in, the restart-on-demotion path unit, `RequiresMountsFor` on the data Volume, the backup timer that asks its own private address instead of localhost, and disabled unattended upgrades (patching a database node is a planned switchover, not a 6 a.m. surprise).
 
-**Why the Hetzner Load Balancer and not HAProxy.** The load balancer is managed, costs €7.49 a month, needs no server of its own to patch or monitor, and is not a single point of failure you have to make redundant. Because it health-checks Patroni directly, it follows the leader with no API calls, floating IPs, keepalived or vip-manager. HAProxy would need its own pair of servers plus a floating IP and a script to move it, which costs more and adds a moving part to every failover. The trade-offs: a Hetzner load balancer cannot have a firewall attached, so this one has no public interface at all; its shortest health-check interval is 3 s; and it never closes established connections, which the restart-on-demotion unit handles. The Docker tests use HAProxy with the same check settings in its place.
+**Why the Hetzner Load Balancer and not HAProxy.** The load balancer is managed, costs €6.99 a month, needs no server of its own to patch or monitor, and is not a single point of failure you have to make redundant. Because it health-checks Patroni directly, it follows the leader with no API calls, floating IPs, keepalived or vip-manager. HAProxy would need its own pair of servers plus a floating IP and a script to move it, which costs more and adds a moving part to every failover. The trade-offs: a Hetzner load balancer cannot have a firewall attached, so this one has no public interface at all; its shortest health-check interval is 3 s; and it never closes established connections, which the restart-on-demotion unit handles. The Docker tests use HAProxy with the same check settings in its place.
 
 ## Local test and CI
 
@@ -224,6 +229,8 @@ Kept as in the post: `ttl 30 / loop_wait 10 / retry_timeout 10`, `synchronous_mo
 GitHub Actions runs on every push: `terraform fmt` and `validate`, `tflint` with all rules, `ansible-lint` with the production profile, `yamllint`, `shellcheck`, and the full Docker test.
 
 The containers share the host's kernel, so the test leaves out the watchdog, the data Volume and kernel settings; everything else, including ufw, runs as on a real server.
+
+On real Hetzner servers (18 October 2026, three CPX22 in hel1) the following has been verified: `terraform apply` creates the 22 resources in about 1.5 minutes; Ansible provisions the cluster in about 3.5 minutes and a second run changes nothing, also after the leader has moved; the load balancer marks only the leader healthy on 5432 and 6432 and only the replicas on 5433; Patroni holds the watchdog open on the leader; `PGDATA` is on the Volume; three `failover-test` runs in a row passed with no acknowledged write lost and every old leader rejoining after a reboot; `make down` removes everything it created. Backups to Hetzner Object Storage were not part of that run: pgBackRest is tested end to end against SeaweedFS in CI, with the same S3 settings the blog post's production cluster uses against Hetzner Object Storage.
 
 ## Operations
 
@@ -260,6 +267,7 @@ To patch the operating system, do one node at a time: patch and reboot the repli
 - **Ubuntu 24.04** is the only tested image.
 - **Transaction pooling** breaks session state: no `LISTEN/NOTIFY`, session advisory locks or `SET` outside a transaction through port 6432. Use port 5432 for those clients.
 - **Automatic security updates are off** on purpose; plan the rolling patch above.
+- **Backups against Hetzner Object Storage** have not been exercised by this repository's own test run yet (see above); run `make backup` and `make restore-test` once after `make up`.
 
 ## Roadmap
 

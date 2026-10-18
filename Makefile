@@ -1,6 +1,9 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
+HCLOUD_TOKEN ?= $(shell sed -n 's/^HCLOUD_TOKEN=//p' .env 2>/dev/null)
+export HCLOUD_TOKEN
+
 PYTHON ?= python3
 TF ?= terraform
 VENV := .venv

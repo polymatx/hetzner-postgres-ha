@@ -54,6 +54,7 @@ output "ansible_inventory" {
             for name, server in hcloud_server.node : name => {
               ansible_host     = server.ipv4_address
               node_private_ip  = local.nodes[name].private_ip
+              node_private_mac = one([for n in server.network : n.mac_address])
               hcloud_server_id = server.id
               pg_volume_device = var.volume_size > 0 ? "/dev/disk/by-id/scsi-0HC_Volume_${hcloud_volume.pgdata[name].id}" : ""
             }

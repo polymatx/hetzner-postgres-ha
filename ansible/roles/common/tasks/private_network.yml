@@ -1,0 +1,29 @@
+- name: Find the private network interface by its MAC address
+  ansible.builtin.set_fact:
+    common_private_iface: >-
+      {{ ansible_facts.interfaces
+         | map('regex_replace', '-', '_')
+         | map('extract', ansible_facts)
+         | selectattr('macaddress', 'defined')
+         | selectattr('macaddress', 'equalto', node_private_mac | lower)
+         | map(attribute='device') | first | default('') }}
+
+- name: Check that the private network interface exists
+  ansible.builtin.assert:
+    that: common_private_iface | length > 0
+    fail_msg: "No interface with MAC {{ node_private_mac }} on {{ inventory_hostname }}; is the server attached to the network?"
+    quiet: true
+
+- name: Write the private network configuration
+  ansible.builtin.copy:
+    dest: /etc/netplan/60-private-network.yaml
+    content: "{{ common_netplan | to_nice_yaml(indent=2) }}"
+    owner: root
+    group: root
+    mode: "0600"
+  vars:
+    common_netplan:
+      network:
+        version: 2
+        ethernets: "{{ {common_private_iface: {'match': {'macaddress': node_private_mac | lower}, 'set-name': common_private_iface, 'dhcp4': true}} }}"
+  notify: Apply netplan

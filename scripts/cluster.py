@@ -117,19 +117,28 @@ class Cluster:
         if node.docker:
             subprocess.run(["docker", "kill" if action == "poweroff" else "start", node.host], capture_output=True, check=True)
             return
+        started = self.hcloud("POST", f"/servers/{node.server_id}/actions/{action}")["action"]
+        deadline = time.monotonic() + 120
+        while started["status"] == "running" and time.monotonic() < deadline:
+            time.sleep(0.5)
+            started = self.hcloud("GET", f"/servers/actions/{started['id']}")["action"]
+        if started["status"] != "success":
+            raise Failure(f"Hetzner API {action} for {node.name} ended as {started['status']}: {started.get('error')}")
+
+    def hcloud(self, method, path):
         token = os.environ.get("HCLOUD_TOKEN")
         if not token:
             raise Failure("HCLOUD_TOKEN is not set; it is needed to power servers off and on.")
         request = urllib.request.Request(
-            f"{HCLOUD_API}/servers/{node.server_id}/actions/{action}",
-            method="POST",
+            f"{HCLOUD_API}{path}",
+            method=method,
             headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-            data=b"{}",
+            data=b"{}" if method == "POST" else None,
         )
         try:
-            urllib.request.urlopen(request, timeout=30).read()
+            return json.loads(urllib.request.urlopen(request, timeout=30).read())
         except urllib.error.HTTPError as error:
-            raise Failure(f"Hetzner API {action} for {node.name} failed: HTTP {error.code} {error.read().decode()[:200]}")
+            raise Failure(f"Hetzner API {method} {path} failed: HTTP {error.code} {error.read().decode()[:200]}")
 
 
 def print_members(members):
@@ -235,52 +244,64 @@ def cmd_failover_test(cluster, args):
 
     acked_before = sum(1 for r in writer.snapshot() if r[1] == "ok")
     log(f"{acked_before} writes acknowledged. Powering off the leader {old_leader} now.")
-    log()
-    t0 = time.monotonic()
-    cluster.power(cluster.nodes[old_leader], "poweroff")
+    requested = time.monotonic()
+    power = {}
 
-    def at(t):
-        return f"[{t - t0:6.1f}s]"
+    def power_off():
+        try:
+            cluster.power(cluster.nodes[old_leader], "poweroff")
+            power["done"] = time.monotonic()
+        except Failure as error:
+            power["error"] = error
 
-    first_fail = new_leader = new_leader_at = resumed_at = None
+    threading.Thread(target=power_off, daemon=True).start()
+    log("Waiting for a new leader and for writes to resume...")
+
+    def outage(records):
+        first_fail = next((r for r in records if r[0] >= requested and r[1] == "fail"), None)
+        if not first_fail:
+            return None, None, None
+        last_ok = next((r for r in reversed(records) if r[1] == "ok" and r[0] < first_fail[0]), None)
+        resumed = next((r for r in records if r[1] == "ok" and r[0] > first_fail[0]), None)
+        return last_ok, first_fail, resumed
+
+    new_leader = new_leader_at = None
     last_poll = 0.0
     while True:
-        now = time.monotonic()
-        if now - t0 > args.timeout:
+        if "error" in power:
             writer.stop()
-            raise Failure(f"no recovery within {args.timeout}s (new leader: {new_leader}, writes resumed: {resumed_at is not None})")
-        records = [r for r in writer.snapshot() if r[0] >= t0]
-        if first_fail is None:
-            fails = [r for r in records if r[1] == "fail"]
-            if fails:
-                first_fail = fails[0]
-                log(f"{at(first_fail[0])} first failed write: {first_fail[2][:100]}")
-        if first_fail is not None and resumed_at is None:
-            oks = [r for r in records if r[1] == "ok" and r[0] > first_fail[0]]
-            if oks:
-                resumed_at = oks[0][0]
-                log(f"{at(resumed_at)} writes are succeeding again")
+            raise power["error"]
+        now = time.monotonic()
+        if now - requested > args.timeout:
+            writer.stop()
+            raise Failure(f"no recovery within {args.timeout}s (new leader: {new_leader})")
+        last_ok, first_fail, resumed = outage(writer.snapshot())
         if new_leader is None and now - last_poll >= 1:
             last_poll = now
-            current = cluster.members(via=writer_name)
-            leader = cluster.leader(current)
+            leader = cluster.leader(cluster.members(via=writer_name))
             if leader and leader != old_leader:
                 new_leader, new_leader_at = leader, time.monotonic()
-                log(f"{at(new_leader_at)} {new_leader} is the new leader")
-        if new_leader and resumed_at and time.monotonic() - max(new_leader_at, resumed_at) > 5:
+        if new_leader and resumed and "done" in power and time.monotonic() - max(new_leader_at, resumed[0]) > 5:
             break
         time.sleep(0.2)
 
     writer.stop()
     records = writer.snapshot()
+    last_ok, first_fail, resumed = outage(records)
+    t0 = last_ok[0] if last_ok else requested
     oks = [r for r in records if r[1] == "ok"]
     fails = [r for r in records if r[1] == "fail"]
-    gap = max((b[0] - a[0] for a, b in zip(oks, oks[1:])), default=0.0)
     acked_ids = {int(r[2].split()[0]) for r in oks}
     stored = cluster.lb_psql(writer_node, f"select id from failover_probe where run = '{run_id}'")
     stored_ids = {int(x) for x in stored.split()} if stored else set()
     lost = sorted(acked_ids - stored_ids)
 
+    log()
+    log(f"Timeline (0 s = the last write {old_leader} acknowledged):")
+    log(f"[{0.0:6.1f}s] last acknowledged write before the outage")
+    log(f"[{first_fail[0] - t0:6.1f}s] first failed write: {first_fail[2][:90]}")
+    log(f"[{new_leader_at - t0:6.1f}s] {new_leader} is the new leader")
+    log(f"[{resumed[0] - t0:6.1f}s] writes are succeeding again")
     log()
     log(f"Powering {old_leader} back on and waiting for it to rejoin as a replica...")
     cluster.power(cluster.nodes[old_leader], "poweron")
@@ -304,8 +325,8 @@ def cmd_failover_test(cluster, args):
     log()
     log("Result")
     log(f"  killed leader          {old_leader} (timeline {old_timeline})")
-    log(f"  new leader             {new_leader} after {new_leader_at - t0:.1f} s")
-    log(f"  writes resumed after   {resumed_at - t0:.1f} s (longest gap between acknowledged writes {gap:.1f} s)")
+    log(f"  new leader             {new_leader}, {new_leader_at - t0:.1f} s after the outage began")
+    log(f"  writes resumed after   {resumed[0] - t0:.1f} s")
     log(f"  writes                 {len(oks)} acknowledged, {len(fails)} failed")
     log(f"  acknowledged but lost  {len(lost)}")
     if rejoined_at:

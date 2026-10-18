@@ -5,6 +5,7 @@
 *.tfplan
 crash.log
 terraform.tfvars
+.env
 ansible/.collections/
 ansible/inventory/*
 !ansible/inventory/.gitkeep

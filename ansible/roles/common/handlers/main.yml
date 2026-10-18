@@ -1,3 +1,7 @@
 - name: Update the apt cache
   ansible.builtin.apt:
     update_cache: true
+
+- name: Apply netplan
+  ansible.builtin.command: netplan apply
+  changed_when: true
