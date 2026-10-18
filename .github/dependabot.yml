@@ -28,6 +28,8 @@ updates:
     directory: /tests
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: ubuntu
     groups:
       test-images:
         patterns: ["*"]
