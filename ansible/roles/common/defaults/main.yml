@@ -1,0 +1,11 @@
+common_packages:
+  - acl
+  - ca-certificates
+  - curl
+  - gnupg
+  - jq
+  - python3-debian
+  - python3-psycopg2
+common_pgdg_uri: https://apt.postgresql.org/pub/repos/apt
+common_pgdg_key_url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+common_disable_auto_upgrades: true

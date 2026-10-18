@@ -1,0 +1,14 @@
+pgbouncer_port: 6432
+pgbouncer_pool_mode: transaction
+pgbouncer_max_client_conn: 500
+pgbouncer_max_db_connections: 80
+pgbouncer_default_pool_size: 20
+pgbouncer_min_pool_size: 5
+pgbouncer_reserve_pool_size: 5
+pgbouncer_reserve_pool_timeout: 3
+pgbouncer_max_prepared_statements: 200
+pgbouncer_query_wait_timeout: 15
+pgbouncer_server_lifetime: 3600
+pgbouncer_server_idle_timeout: 600
+pgbouncer_users:
+  - "{{ app_db_user }}"

@@ -1,0 +1,77 @@
+patroni_dynamic_config:
+  ttl: "{{ patroni_ttl | int }}"
+  loop_wait: "{{ patroni_loop_wait | int }}"
+  retry_timeout: "{{ patroni_retry_timeout | int }}"
+  maximum_lag_on_failover: "{{ patroni_maximum_lag_on_failover | int }}"
+  synchronous_mode: "{{ patroni_synchronous_mode | bool }}"
+  synchronous_mode_strict: "{{ patroni_synchronous_mode_strict | bool }}"
+  synchronous_node_count: "{{ patroni_synchronous_node_count | int }}"
+  postgresql:
+    use_pg_rewind: true
+    use_slots: true
+    parameters: "{{ patroni_postgresql_parameters | combine(patroni_postgresql_extra_parameters) }}"
+
+patroni_pg_hba: >-
+  {{
+    [
+      'local all postgres peer',
+      'local all all peer',
+      'host all all 127.0.0.1/32 scram-sha-256',
+    ]
+    + (groups['postgres'] | map('extract', hostvars, 'node_private_ip')
+       | map('regex_replace', '^', 'host replication replicator ')
+       | map('regex_replace', '$', '/32 scram-sha-256') | list)
+    + [
+      'hostssl all postgres ' ~ cluster_cidr ~ ' scram-sha-256',
+      'host ' ~ app_db_name ~ ' ' ~ app_db_user ~ ' ' ~ cluster_cidr ~ ' scram-sha-256',
+      'host ' ~ app_db_name ~ ' +' ~ app_db_ro_role ~ ' ' ~ cluster_cidr ~ ' scram-sha-256',
+    ]
+    + patroni_pg_hba_extra
+  }}
+
+patroni_config:
+  scope: "{{ patroni_scope }}"
+  namespace: "{{ patroni_namespace }}"
+  name: "{{ inventory_hostname }}"
+  log:
+    level: INFO
+  restapi:
+    listen: "{{ node_private_ip }}:{{ patroni_restapi_port }}"
+    connect_address: "{{ node_private_ip }}:{{ patroni_restapi_port }}"
+    authentication:
+      username: "{{ patroni_restapi_username }}"
+      password: "{{ patroni_restapi_password }}"
+  etcd3:
+    hosts: "{{ groups['postgres'] | map('extract', hostvars, 'node_private_ip') | map('regex_replace', '$', ':2379') | list }}"
+  bootstrap:
+    dcs: "{{ patroni_dynamic_config }}"
+    initdb: "{{ patroni_initdb + (patroni_initdb_builtin_locale if pg_version | int >= 17 else []) }}"
+  postgresql:
+    listen: "0.0.0.0:{{ pg_port }}"
+    connect_address: "{{ node_private_ip }}:{{ pg_port }}"
+    use_unix_socket: true
+    data_dir: "{{ pg_data_dir }}"
+    bin_dir: "{{ pg_bin_dir }}"
+    config_dir: "{{ pg_data_dir }}"
+    pgpass: "{{ patroni_pgpass }}"
+    authentication:
+      superuser:
+        username: postgres
+        password: "{{ pg_superuser_password }}"
+      replication:
+        username: replicator
+        password: "{{ pg_replication_password }}"
+    parameters:
+      unix_socket_directories: "{{ pg_socket_dir }}"
+    pg_hba: "{{ patroni_pg_hba }}"
+    create_replica_methods:
+      - basebackup
+    basebackup:
+      - checkpoint: fast
+    callbacks:
+      on_start: /usr/local/bin/pg-role-callback
+      on_role_change: /usr/local/bin/pg-role-callback
+  watchdog:
+    mode: "{{ patroni_watchdog_mode }}"
+    device: /dev/watchdog
+    safety_margin: "{{ patroni_watchdog_safety_margin | int }}"

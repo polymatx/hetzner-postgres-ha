@@ -1,0 +1,76 @@
+name: hpha-test
+
+x-node: &node
+  image: hpha-node:test
+  build:
+    context: .
+    dockerfile: node.Dockerfile
+  privileged: true
+  cgroup: host
+  shm_size: 256m
+  tmpfs:
+    - /run
+    - /run/lock
+    - /tmp
+  volumes:
+    - /sys/fs/cgroup:/sys/fs/cgroup:rw
+
+services:
+  pg-ha-1:
+    <<: *node
+    container_name: hpha-pg-ha-1
+    hostname: pg-ha-1
+    networks:
+      pgnet:
+        ipv4_address: 10.77.0.21
+
+  pg-ha-2:
+    <<: *node
+    container_name: hpha-pg-ha-2
+    hostname: pg-ha-2
+    networks:
+      pgnet:
+        ipv4_address: 10.77.0.22
+
+  pg-ha-3:
+    <<: *node
+    container_name: hpha-pg-ha-3
+    hostname: pg-ha-3
+    networks:
+      pgnet:
+        ipv4_address: 10.77.0.23
+
+  lb:
+    image: haproxy:3.2-alpine
+    container_name: hpha-lb
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+    networks:
+      pgnet:
+        ipv4_address: 10.77.0.10
+
+  s3:
+    image: chrislusf/seaweedfs:4.48
+    container_name: hpha-s3
+    command:
+      - server
+      - -dir=/data
+      - -ip=10.77.0.30
+      - -s3
+      - -s3.port=8333
+      - -s3.port.https=9000
+      - -s3.cert.file=/certs/public.crt
+      - -s3.key.file=/certs/private.key
+      - -s3.config=/etc/seaweedfs/s3.json
+    volumes:
+      - ./s3.json:/etc/seaweedfs/s3.json:ro
+      - ./.certs:/certs:ro
+    networks:
+      pgnet:
+        ipv4_address: 10.77.0.30
+
+networks:
+  pgnet:
+    ipam:
+      config:
+        - subnet: 10.77.0.0/24

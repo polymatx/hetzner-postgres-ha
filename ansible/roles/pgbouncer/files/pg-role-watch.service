@@ -1,0 +1,6 @@
+[Unit]
+Description=Reconcile PgBouncer with the current Patroni role
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pg-role-apply

@@ -1,0 +1,13 @@
+#!/bin/bash
+set -u
+log=/var/log/pg-role-callback.log
+role=$(tr -cd 'a-z_' < /var/lib/postgresql/pg-role-target)
+case "$role" in
+  "") ;;
+  primary|master|promoted)
+    systemctl is-active --quiet pgbouncer || systemctl start pgbouncer
+    ;;
+  *)
+    systemctl restart pgbouncer && echo "$(date -u '+%F %T') role=$role -> restarted pgbouncer" >> "$log"
+    ;;
+esac

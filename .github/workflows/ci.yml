@@ -1,0 +1,82 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  terraform:
+    name: Terraform
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: "1.16.6"
+          terraform_wrapper: false
+      - uses: terraform-linters/setup-tflint@v6
+        with:
+          tflint_version: v0.64.0
+      - name: terraform fmt
+        run: make fmt
+      - name: terraform validate
+        run: make validate
+      - name: tflint
+        run: make tflint
+
+  ansible:
+    name: Ansible lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: make deps
+      - name: ansible-lint
+        run: make ansible-lint
+      - name: yamllint
+        run: make yamllint
+      - name: shellcheck and Python syntax
+        run: make shellcheck
+
+  cluster:
+    name: 3-node cluster in Docker
+    runs-on: ubuntu-24.04
+    needs: [ansible]
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: make deps
+      - name: Start three systemd nodes, a load balancer and S3
+        run: make test-up
+      - name: Provision the cluster
+        run: make test-provision
+      - name: Check idempotence
+        run: make test-idempotence
+      - name: Kill the leader under writes
+        run: make test-failover
+      - name: Backup
+        run: make test-backup
+      - name: Point-in-time restore
+        run: make test-restore
+      - name: Logs
+        if: failure()
+        run: make test-logs
+      - name: Clean up
+        if: always()
+        run: make test-down

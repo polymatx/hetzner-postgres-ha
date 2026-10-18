@@ -1,0 +1,52 @@
+- name: Create the application role
+  community.postgresql.postgresql_user:
+    name: "{{ app_db_user }}"
+    password: "{{ pg_app_password }}"
+    login_unix_socket: "{{ pg_socket_dir }}"
+    login_db: postgres
+  become: true
+  become_user: postgres
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+  no_log: true
+
+- name: Create the read-only group role
+  community.postgresql.postgresql_user:
+    name: "{{ app_db_ro_role }}"
+    role_attr_flags: NOLOGIN
+    login_unix_socket: "{{ pg_socket_dir }}"
+    login_db: postgres
+  become: true
+  become_user: postgres
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+
+- name: Create the application database
+  community.postgresql.postgresql_db:
+    name: "{{ app_db_name }}"
+    owner: "{{ app_db_user }}"
+    login_unix_socket: "{{ pg_socket_dir }}"
+  become: true
+  become_user: postgres
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+
+- name: Grant read-only access to the group role
+  community.postgresql.postgresql_privs:
+    login_db: "{{ app_db_name }}"
+    login_unix_socket: "{{ pg_socket_dir }}"
+    roles: "{{ app_db_ro_role }}"
+    type: "{{ item.type }}"
+    objs: "{{ item.objs }}"
+    privs: "{{ item.privs }}"
+    schema: "{{ item.schema | default(omit) }}"
+    target_roles: "{{ item.target_roles | default(omit) }}"
+  loop:
+    - { type: database, objs: "{{ app_db_name }}", privs: CONNECT }
+    - { type: schema, objs: public, privs: USAGE }
+    - { type: table, objs: ALL_IN_SCHEMA, schema: public, privs: SELECT }
+    - { type: default_privs, objs: TABLES, schema: public, privs: SELECT, target_roles: "{{ app_db_user }}" }
+  become: true
+  become_user: postgres
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"

@@ -1,0 +1,36 @@
+- name: Install the softdog loader
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/softdog-load.service
+    content: |
+      [Unit]
+      Description=Load softdog for the Patroni watchdog
+      DefaultDependencies=no
+      Before=patroni.service sysinit.target
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart=/sbin/modprobe softdog
+
+      [Install]
+      WantedBy=sysinit.target
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Let the postgres user open the watchdog device
+  ansible.builtin.copy:
+    dest: /etc/udev/rules.d/60-watchdog.rules
+    content: |
+      KERNEL=="watchdog", OWNER="postgres", MODE="0600"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Apply the watchdog udev rule
+
+- name: Load softdog
+  ansible.builtin.systemd_service:
+    name: softdog-load
+    state: started
+    enabled: true
+    daemon_reload: true

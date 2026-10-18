@@ -1,0 +1,7 @@
+[Unit]
+Description=pgBackRest backup (runs only on the Patroni primary)
+After=patroni.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/pgbackrest-backup

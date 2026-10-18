@@ -1,0 +1,73 @@
+- name: Check whether the bucket exists
+  ansible.builtin.command:
+    argv: "{{ ['curl', '-sS', '-o', '/dev/null', '-w', '%{http_code}', '--config', '-', '-I']
+              + ([] if pgbackrest_s3_verify_tls | bool else ['-k']) + [pgbackrest_s3_url] }}"
+    stdin: |
+      user = "{{ pgbackrest_s3_key }}:{{ pgbackrest_s3_key_secret }}"
+      aws-sigv4 = "aws:amz:{{ pgbackrest_s3_region }}:s3"
+  register: pgbackrest_bucket_head
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+  changed_when: false
+  no_log: true
+  when: pgbackrest_create_bucket | bool
+
+- name: Fail when the bucket name belongs to someone else
+  ansible.builtin.fail:
+    msg: "Bucket {{ pgbackrest_s3_bucket }} answered HTTP {{ pgbackrest_bucket_head.stdout }}. Pick another backup_bucket name or check the keys."
+  run_once: true
+  when:
+    - pgbackrest_create_bucket | bool
+    - pgbackrest_bucket_head.stdout not in ['200', '404']
+
+- name: Create the bucket
+  ansible.builtin.command:
+    argv: "{{ ['curl', '-sS', '-f', '-o', '/dev/null', '--config', '-', '-X', 'PUT']
+              + ([] if pgbackrest_s3_verify_tls | bool else ['-k']) + [pgbackrest_s3_url] }}"
+    stdin: |
+      user = "{{ pgbackrest_s3_key }}:{{ pgbackrest_s3_key_secret }}"
+      aws-sigv4 = "aws:amz:{{ pgbackrest_s3_region }}:s3"
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+  changed_when: true
+  no_log: true
+  when:
+    - pgbackrest_create_bucket | bool
+    - pgbackrest_bucket_head.stdout == '404'
+
+- name: Read the repository state
+  ansible.builtin.command: "pgbackrest --stanza={{ pgbackrest_stanza }} --output=json info"
+  become: true
+  become_user: postgres
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+  register: pgbackrest_info
+  changed_when: false
+
+- name: Create the stanza
+  ansible.builtin.command: "pgbackrest --stanza={{ pgbackrest_stanza }} stanza-create"
+  become: true
+  become_user: postgres
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+  when: (pgbackrest_info.stdout | from_json | first).status.code in [1, 3]
+  changed_when: true
+
+- name: Check WAL archiving end to end
+  ansible.builtin.command: "pgbackrest --stanza={{ pgbackrest_stanza }} check"
+  become: true
+  become_user: postgres
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+  changed_when: false
+
+- name: Take the first full backup
+  ansible.builtin.command: "pgbackrest --stanza={{ pgbackrest_stanza }} --type=full backup"
+  become: true
+  become_user: postgres
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+  when:
+    - pgbackrest_initial_backup | bool
+    - (pgbackrest_info.stdout | from_json | first).backup | default([]) | length == 0
+  changed_when: true

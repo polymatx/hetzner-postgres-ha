@@ -1,0 +1,9 @@
+[Unit]
+After=network-online.target etcd.service
+{% if patroni_volume_device | length > 0 %}
+RequiresMountsFor={{ patroni_volume_mountpoint }}
+{% endif %}
+
+[Service]
+Restart=on-failure
+RestartSec=5

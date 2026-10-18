@@ -1,0 +1,22 @@
+[databases]
+{{ app_db_name }} = host=127.0.0.1 port={{ pg_port }} dbname={{ app_db_name }}
+
+[pgbouncer]
+listen_addr = *
+listen_port = {{ pgbouncer_port }}
+unix_socket_dir = {{ pg_socket_dir }}
+pool_mode = {{ pgbouncer_pool_mode }}
+max_client_conn = {{ pgbouncer_max_client_conn }}
+max_db_connections = {{ pgbouncer_max_db_connections }}
+default_pool_size = {{ pgbouncer_default_pool_size }}
+min_pool_size = {{ pgbouncer_min_pool_size }}
+reserve_pool_size = {{ pgbouncer_reserve_pool_size }}
+reserve_pool_timeout = {{ pgbouncer_reserve_pool_timeout }}
+max_prepared_statements = {{ pgbouncer_max_prepared_statements }}
+query_wait_timeout = {{ pgbouncer_query_wait_timeout }}
+server_lifetime = {{ pgbouncer_server_lifetime }}
+server_idle_timeout = {{ pgbouncer_server_idle_timeout }}
+ignore_startup_parameters = extra_float_digits,options
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+admin_users = postgres

@@ -1,0 +1,123 @@
+- name: Create the postgresql-common drop-in directory
+  ansible.builtin.file:
+    path: /etc/postgresql-common/createcluster.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Keep Debian from creating a default cluster
+  ansible.builtin.copy:
+    dest: /etc/postgresql-common/createcluster.d/00-patroni.conf
+    content: |
+      create_main_cluster = false
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Prepare the data volume
+  ansible.builtin.import_tasks: volume.yml
+  when: patroni_volume_device | length > 0
+
+- name: Install PostgreSQL and Patroni
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ pg_version }}"
+      - "postgresql-client-{{ pg_version }}"
+      - patroni
+      - ssl-cert
+    state: present
+
+- name: Keep the Debian PostgreSQL service out of the way
+  ansible.builtin.systemd_service:
+    name: postgresql
+    state: stopped
+    enabled: false
+
+- name: Check for a Debian-managed cluster
+  ansible.builtin.stat:
+    path: "/etc/postgresql/{{ pg_version }}/main"
+  register: patroni_debian_cluster
+
+- name: Remove the Debian-managed cluster so Patroni owns the data directory
+  ansible.builtin.command: "pg_dropcluster --stop {{ pg_version }} main"
+  when: patroni_debian_cluster.stat.exists
+  changed_when: true
+
+- name: Create PostgreSQL directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: postgres
+    group: postgres
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /var/lib/postgresql, mode: "0755" }
+    - { path: "/var/lib/postgresql/{{ pg_version }}", mode: "0700" }
+    - { path: /etc/patroni, mode: "0750" }
+
+- name: Set up the watchdog
+  ansible.builtin.import_tasks: watchdog.yml
+  when: patroni_watchdog_mode != 'off'
+
+- name: Give the watchdog device to postgres before Patroni starts
+  ansible.builtin.meta: flush_handlers
+
+- name: Install the role change callback
+  ansible.builtin.copy:
+    src: pg-role-callback
+    dest: /usr/local/bin/pg-role-callback
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Create the role marker file
+  ansible.builtin.copy:
+    dest: /var/lib/postgresql/pg-role-target
+    content: ""
+    force: false
+    owner: postgres
+    group: postgres
+    mode: "0644"
+
+- name: Create the Patroni service drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/system/patroni.service.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Configure the Patroni service
+  ansible.builtin.template:
+    src: patroni-override.conf.j2
+    dest: /etc/systemd/system/patroni.service.d/10-postgres-ha.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure Patroni
+  ansible.builtin.template:
+    src: config.yml.j2
+    dest: "{{ patroni_config_file }}"
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  notify: Reload patroni
+
+- name: Start the cluster
+  ansible.builtin.import_tasks: start.yml
+
+- name: Apply the dynamic configuration
+  ansible.builtin.import_tasks: dynamic_config.yml
+
+- name: Create the application database
+  ansible.builtin.import_tasks: database.yml
+
+- name: Store application credentials for root
+  ansible.builtin.template:
+    src: pgpass.j2
+    dest: /root/.pgpass
+    owner: root
+    group: root
+    mode: "0600"

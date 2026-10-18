@@ -1,0 +1,12 @@
+- name: Make sure the data volume has a filesystem
+  community.general.filesystem:
+    dev: "{{ patroni_volume_device }}"
+    fstype: ext4
+
+- name: Mount the data volume
+  ansible.posix.mount:
+    path: "{{ patroni_volume_mountpoint }}"
+    src: "{{ patroni_volume_device }}"
+    fstype: ext4
+    opts: discard,noatime,nofail,defaults
+    state: mounted

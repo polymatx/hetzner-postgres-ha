@@ -1,0 +1,14 @@
+cluster_name = "pg-ha"
+location     = "hel1"
+server_type  = "cpx22"
+volume_size  = 20
+
+ssh_public_keys = [
+  "ssh-ed25519 AAAA... you@laptop",
+]
+
+admin_cidrs = []
+
+backup_s3_region     = "fsn1"
+backup_s3_access_key = ""
+backup_s3_secret_key = ""

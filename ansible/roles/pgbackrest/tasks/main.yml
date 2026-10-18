@@ -1,0 +1,39 @@
+- name: Check the backup settings
+  ansible.builtin.assert:
+    that:
+      - pgbackrest_s3_bucket | length > 0
+      - pgbackrest_s3_endpoint | length > 0
+      - pgbackrest_s3_key | length > 0
+      - pgbackrest_s3_key_secret | length > 0
+    fail_msg: Backups are enabled but the S3 bucket, endpoint or keys are missing.
+    quiet: true
+  when: pgbackrest_enabled | bool
+
+- name: Install pgBackRest
+  ansible.builtin.apt:
+    name: pgbackrest
+    state: present
+  when: pgbackrest_enabled | bool
+
+- name: Create pgBackRest directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /etc/pgbackrest, owner: root, mode: "0755" }
+    - { path: /var/spool/pgbackrest, owner: postgres, mode: "0750" }
+    - { path: /var/log/pgbackrest, owner: postgres, mode: "0750" }
+  when: pgbackrest_enabled | bool
+
+- name: Configure pgBackRest
+  ansible.builtin.template:
+    src: pgbackrest.conf.j2
+    dest: /etc/pgbackrest/pgbackrest.conf
+    owner: postgres
+    group: postgres
+    mode: "0600"
+  no_log: true
+  when: pgbackrest_enabled | bool

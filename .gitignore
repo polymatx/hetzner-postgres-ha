@@ -1,0 +1,14 @@
+.venv/
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+terraform.tfvars
+ansible/.collections/
+ansible/inventory/*
+!ansible/inventory/.gitkeep
+tests/.secrets/
+tests/.certs/
+.DS_Store
+__pycache__/

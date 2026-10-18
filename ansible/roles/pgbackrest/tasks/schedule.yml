@@ -1,0 +1,25 @@
+- name: Install the backup script
+  ansible.builtin.template:
+    src: pgbackrest-backup.j2
+    dest: /usr/local/bin/pgbackrest-backup
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the backup units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - pgbackrest-backup.service
+    - pgbackrest-backup.timer
+
+- name: Enable the backup timer
+  ansible.builtin.systemd_service:
+    name: pgbackrest-backup.timer
+    state: started
+    enabled: true
+    daemon_reload: true

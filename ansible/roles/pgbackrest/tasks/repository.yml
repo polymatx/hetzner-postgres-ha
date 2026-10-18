@@ -1,0 +1,15 @@
+- name: Warn that backups are disabled
+  ansible.builtin.debug:
+    msg: >-
+      Backups are disabled: no S3 credentials were configured. WAL is not archived and there is no point-in-time recovery.
+      Set backup_s3_access_key and backup_s3_secret_key in terraform.tfvars and run make up again.
+  run_once: true
+  when: not (pgbackrest_enabled | bool)
+
+- name: Set up the backup repository
+  ansible.builtin.import_tasks: stanza.yml
+  when: pgbackrest_enabled | bool
+
+- name: Schedule backups
+  ansible.builtin.import_tasks: schedule.yml
+  when: pgbackrest_enabled | bool

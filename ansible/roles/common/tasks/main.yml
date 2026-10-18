@@ -1,0 +1,58 @@
+- name: Check for cloud-init
+  ansible.builtin.stat:
+    path: /usr/bin/cloud-init
+  register: common_cloud_init
+
+- name: Wait for cloud-init to finish
+  ansible.builtin.command: cloud-init status --wait
+  register: common_cloud_init_status
+  changed_when: false
+  failed_when: common_cloud_init_status.rc not in [0, 2]
+  when: common_cloud_init.stat.exists
+
+- name: Check that the private address is configured
+  ansible.builtin.assert:
+    that: node_private_ip in ansible_facts.all_ipv4_addresses
+    fail_msg: "{{ node_private_ip }} is not configured on {{ inventory_hostname }} ({{ ansible_facts.all_ipv4_addresses | join(', ') }})"
+    quiet: true
+
+- name: Stop automatic package upgrades
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  when: common_disable_auto_upgrades
+
+- name: Disable unattended upgrades
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "0";
+      APT::Periodic::Unattended-Upgrade "0";
+    owner: root
+    group: root
+    mode: "0644"
+  when: common_disable_auto_upgrades
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Add the PostgreSQL (PGDG) apt repository
+  ansible.builtin.deb822_repository:
+    name: pgdg
+    types: deb
+    uris: "{{ common_pgdg_uri }}"
+    suites: "{{ ansible_facts.distribution_release }}-pgdg"
+    components: main
+    signed_by: "{{ common_pgdg_key_url }}"
+  notify: Update the apt cache
+
+- name: Refresh the apt cache before installing PostgreSQL packages
+  ansible.builtin.meta: flush_handlers

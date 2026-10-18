@@ -1,0 +1,19 @@
+pg_version: 18
+pg_port: 5432
+pg_data_dir: "/var/lib/postgresql/{{ pg_version }}/main"
+pg_bin_dir: "/usr/lib/postgresql/{{ pg_version }}/bin"
+pg_socket_dir: /var/run/postgresql
+
+app_db_name: appdb
+app_db_user: appuser
+app_db_ro_role: "{{ app_db_name }}_ro"
+
+secrets_dir: "{{ inventory_dir }}/.secrets/{{ cluster_name }}"
+secret_chars: ascii_letters,digits
+
+pg_superuser_password: "{{ lookup('ansible.builtin.password', secrets_dir ~ '/postgres', length=32, chars=secret_chars) }}"
+pg_replication_password: "{{ lookup('ansible.builtin.password', secrets_dir ~ '/replicator', length=32, chars=secret_chars) }}"
+pg_app_password: "{{ lookup('ansible.builtin.password', secrets_dir ~ '/' ~ app_db_user, length=32, chars=secret_chars) }}"
+patroni_restapi_password: "{{ lookup('ansible.builtin.password', secrets_dir ~ '/patroni-restapi', length=32, chars=secret_chars) }}"
+etcd_cluster_token: "{{ lookup('ansible.builtin.password', secrets_dir ~ '/etcd-cluster-token', length=24, chars=secret_chars) }}"
+pgbackrest_cipher_pass: "{{ lookup('ansible.builtin.password', secrets_dir ~ '/pgbackrest-cipher', length=48, chars=secret_chars) }}"

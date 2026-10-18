@@ -1,0 +1,57 @@
+- name: Start Patroni on the bootstrap node
+  ansible.builtin.systemd_service:
+    name: patroni
+    state: started
+    enabled: true
+    daemon_reload: true
+  when: inventory_hostname == ansible_play_hosts[0]
+
+- name: Wait for a leader
+  ansible.builtin.uri:
+    url: "http://{{ node_private_ip }}:{{ patroni_restapi_port }}/cluster"
+    return_content: true
+  register: patroni_cluster
+  until: >-
+    patroni_cluster.status == 200
+    and (patroni_cluster.json.members | default([]) | selectattr('role', 'equalto', 'leader') | list | length) == 1
+  retries: 60
+  delay: 5
+  when: inventory_hostname == ansible_play_hosts[0]
+
+- name: Start Patroni on the other nodes
+  ansible.builtin.systemd_service:
+    name: patroni
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait until PostgreSQL runs on every node
+  ansible.builtin.uri:
+    url: "http://{{ node_private_ip }}:{{ patroni_restapi_port }}/health"
+  register: patroni_health
+  until: patroni_health.status == 200
+  retries: 120
+  delay: 5
+
+- name: Ask Patroni whether this node is the leader
+  ansible.builtin.uri:
+    url: "http://{{ node_private_ip }}:{{ patroni_restapi_port }}/primary"
+    status_code: [200, 503]
+  register: patroni_primary_check
+
+- name: Remember the leader
+  ansible.builtin.set_fact:
+    patroni_leader: >-
+      {{ ansible_play_hosts
+         | zip(ansible_play_hosts | map('extract', hostvars, ['patroni_primary_check', 'status']))
+         | selectattr(1, 'equalto', 200) | map(attribute=0) | list }}
+
+- name: Check that there is exactly one leader
+  ansible.builtin.assert:
+    that: patroni_leader | length == 1
+    fail_msg: "Expected one leader, found {{ patroni_leader | length }}: {{ patroni_leader | join(', ') }}"
+    quiet: true
+
+- name: Use the leader's name
+  ansible.builtin.set_fact:
+    patroni_leader: "{{ patroni_leader | first }}"

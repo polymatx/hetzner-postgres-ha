@@ -1,0 +1,30 @@
+all:
+  vars:
+    ansible_connection: community.docker.docker
+    ansible_user: root
+    cluster_name: pg-ha
+    cluster_cidr: 10.77.0.0/24
+    lb_host: 10.77.0.10
+    hardening_sysctl: false
+    patroni_watchdog_mode: "off"
+    patroni_memory_mb: 1024
+    pgbackrest_enabled: true
+    pgbackrest_s3_bucket: pg-ha-test-backups
+    pgbackrest_s3_endpoint: 10.77.0.30
+    pgbackrest_s3_port: 9000
+    pgbackrest_s3_region: us-east-1
+    pgbackrest_s3_verify_tls: false
+    pgbackrest_s3_key: hpha-test-access-key
+    pgbackrest_s3_key_secret: hpha-test-secret-key-not-a-real-secret
+  children:
+    postgres:
+      hosts:
+        pg-ha-1:
+          ansible_host: hpha-pg-ha-1
+          node_private_ip: 10.77.0.21
+        pg-ha-2:
+          ansible_host: hpha-pg-ha-2
+          node_private_ip: 10.77.0.22
+        pg-ha-3:
+          ansible_host: hpha-pg-ha-3
+          node_private_ip: 10.77.0.23

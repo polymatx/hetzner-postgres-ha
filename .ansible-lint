@@ -1,0 +1,10 @@
+profile: production
+exclude_paths:
+  - .venv/
+  - ansible/.collections/
+  - .github/
+  - tests/docker-compose.yml
+  - terraform/
+kinds:
+  - playbook: "ansible/site.yml"
+  - tasks: "ansible/tasks/*.yml"

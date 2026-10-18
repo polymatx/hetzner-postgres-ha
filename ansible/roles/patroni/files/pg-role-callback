@@ -1,0 +1,5 @@
+#!/bin/bash
+case "$1" in
+  on_start|on_role_change) printf '%s\n' "$2" > /var/lib/postgresql/pg-role-target ;;
+esac
+exit 0

@@ -1,0 +1,13 @@
+#!/bin/bash
+set -euo pipefail
+code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://{{ node_private_ip }}:{{ patroni_restapi_port | default(8008) }}/primary || true)
+if [ "$code" != 200 ]; then
+  echo "$(hostname) is not the primary (HTTP $code), nothing to do"
+  exit 0
+fi
+type=${1:-}
+if [ -z "$type" ]; then
+  type=diff
+  [ "$(date -u +%u)" = {{ pgbackrest_full_backup_weekday }} ] && type=full
+fi
+exec runuser -u postgres -- pgbackrest --stanza={{ pgbackrest_stanza }} --type="$type" backup

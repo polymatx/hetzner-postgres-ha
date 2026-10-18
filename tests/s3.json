@@ -1,0 +1,14 @@
+{
+  "identities": [
+    {
+      "name": "pgbackrest",
+      "credentials": [
+        {
+          "accessKey": "hpha-test-access-key",
+          "secretKey": "hpha-test-secret-key-not-a-real-secret"
+        }
+      ],
+      "actions": ["Admin", "Read", "List", "Tagging", "Write"]
+    }
+  ]
+}

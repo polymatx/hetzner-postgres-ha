@@ -1,0 +1,21 @@
+- name: Read the dynamic configuration
+  ansible.builtin.uri:
+    url: "http://{{ hostvars[patroni_leader].node_private_ip }}:{{ patroni_restapi_port }}/config"
+    return_content: true
+  register: patroni_current_config
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+
+- name: Update the dynamic configuration
+  ansible.builtin.uri:
+    url: "http://{{ hostvars[patroni_leader].node_private_ip }}:{{ patroni_restapi_port }}/config"
+    method: PATCH
+    body_format: json
+    body: "{{ patroni_dynamic_config }}"
+    url_username: "{{ patroni_restapi_username }}"
+    url_password: "{{ patroni_restapi_password }}"
+    force_basic_auth: true
+  run_once: true
+  delegate_to: "{{ patroni_leader }}"
+  when: (patroni_current_config.json | combine(patroni_dynamic_config, recursive=True)) != patroni_current_config.json
+  changed_when: true

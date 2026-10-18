@@ -1,0 +1,43 @@
+- name: PostgreSQL high availability cluster
+  hosts: postgres
+  any_errors_fatal: true
+  gather_facts: false
+  tasks:
+    - name: Wait until the nodes accept connections
+      ansible.builtin.wait_for_connection:
+        timeout: 300
+
+    - name: Gather facts
+      ansible.builtin.setup:
+
+    - name: Generate cluster secrets
+      ansible.builtin.import_tasks: tasks/secrets.yml
+
+    - name: Base system
+      ansible.builtin.import_role:
+        name: common
+
+    - name: Hardening
+      ansible.builtin.import_role:
+        name: hardening
+
+    - name: Distributed configuration store
+      ansible.builtin.import_role:
+        name: etcd
+
+    - name: Backup tooling
+      ansible.builtin.import_role:
+        name: pgbackrest
+
+    - name: PostgreSQL and Patroni
+      ansible.builtin.import_role:
+        name: patroni
+
+    - name: Connection pooler
+      ansible.builtin.import_role:
+        name: pgbouncer
+
+    - name: Backup repository and schedule
+      ansible.builtin.import_role:
+        name: pgbackrest
+        tasks_from: repository

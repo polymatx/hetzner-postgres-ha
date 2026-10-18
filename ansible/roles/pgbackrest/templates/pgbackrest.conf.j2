@@ -1,0 +1,34 @@
+[global]
+repo1-type=s3
+repo1-path={{ pgbackrest_repo_path }}
+repo1-s3-bucket={{ pgbackrest_s3_bucket }}
+repo1-s3-endpoint={{ pgbackrest_s3_endpoint }}
+repo1-s3-region={{ pgbackrest_s3_region }}
+repo1-s3-uri-style=path
+repo1-s3-key={{ pgbackrest_s3_key }}
+repo1-s3-key-secret={{ pgbackrest_s3_key_secret }}
+{% if pgbackrest_s3_port | int != 443 %}
+repo1-storage-port={{ pgbackrest_s3_port }}
+{% endif %}
+{% if not (pgbackrest_s3_verify_tls | bool) %}
+repo1-storage-verify-tls=n
+{% endif %}
+{% if pgbackrest_cipher_type != 'none' %}
+repo1-cipher-type={{ pgbackrest_cipher_type }}
+repo1-cipher-pass={{ pgbackrest_cipher_pass }}
+{% endif %}
+repo1-retention-full={{ pgbackrest_retention_full }}
+repo1-retention-diff={{ pgbackrest_retention_diff }}
+process-max={{ pgbackrest_process_max }}
+compress-type={{ pgbackrest_compress_type }}
+start-fast=y
+archive-async=y
+spool-path=/var/spool/pgbackrest
+log-level-console=info
+log-level-file=detail
+log-path=/var/log/pgbackrest
+
+[{{ pgbackrest_stanza }}]
+pg1-path={{ pg_data_dir }}
+pg1-port={{ pg_port }}
+pg1-socket-path={{ pg_socket_dir }}

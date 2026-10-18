@@ -1,0 +1,20 @@
+pgbackrest_enabled: false
+pgbackrest_stanza: "{{ cluster_name }}"
+pgbackrest_repo_path: /pgbackrest
+pgbackrest_s3_bucket: ""
+pgbackrest_s3_endpoint: ""
+pgbackrest_s3_region: fsn1
+pgbackrest_s3_port: 443
+pgbackrest_s3_verify_tls: true
+pgbackrest_s3_key: ""
+pgbackrest_s3_key_secret: ""
+pgbackrest_cipher_type: aes-256-cbc
+pgbackrest_retention_full: 2
+pgbackrest_retention_diff: 14
+pgbackrest_process_max: 2
+pgbackrest_compress_type: zst
+pgbackrest_schedule: "*-*-* 01:00:00"
+pgbackrest_full_backup_weekday: 7
+pgbackrest_initial_backup: true
+pgbackrest_create_bucket: true
+pgbackrest_s3_url: "https://{{ pgbackrest_s3_endpoint }}{{ '' if pgbackrest_s3_port | int == 443 else ':' ~ pgbackrest_s3_port }}/{{ pgbackrest_s3_bucket }}"

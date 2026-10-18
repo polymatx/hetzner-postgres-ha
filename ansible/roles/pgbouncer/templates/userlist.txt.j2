@@ -1,0 +1,3 @@
+{% for row in pgbouncer_verifiers.query_result %}
+"{{ row.rolname }}" "{{ row.rolpassword }}"
+{% endfor %}

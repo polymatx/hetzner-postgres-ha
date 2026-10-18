@@ -1,0 +1,14 @@
+hardening_ssh: true
+hardening_ufw: true
+hardening_sysctl: true
+hardening_cluster_ports:
+  - 2379
+  - 2380
+  - 5432
+  - 6432
+  - 8008
+hardening_sysctl_settings:
+  vm.swappiness: 1
+  net.ipv4.tcp_keepalive_time: 60
+  net.ipv4.tcp_keepalive_intvl: 10
+  net.ipv4.tcp_keepalive_probes: 6

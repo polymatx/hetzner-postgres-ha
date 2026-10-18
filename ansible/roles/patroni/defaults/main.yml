@@ -1,0 +1,77 @@
+patroni_scope: "{{ cluster_name }}"
+patroni_namespace: /service/
+patroni_restapi_port: 8008
+patroni_restapi_username: patroni
+patroni_config_file: /etc/patroni/config.yml
+patroni_pgpass: /var/lib/postgresql/.pgpass_patroni
+
+patroni_ttl: 30
+patroni_loop_wait: 10
+patroni_retry_timeout: 10
+patroni_maximum_lag_on_failover: 1048576
+patroni_synchronous_mode: true
+patroni_synchronous_mode_strict: false
+patroni_synchronous_node_count: 1
+
+patroni_watchdog_mode: automatic
+patroni_watchdog_safety_margin: 5
+
+patroni_volume_device: "{{ pg_volume_device | default('') }}"
+patroni_volume_mountpoint: /var/lib/postgresql
+
+patroni_memory_mb: "{{ ansible_facts.memtotal_mb }}"
+patroni_shared_buffers: "{{ (patroni_memory_mb | int * 0.25) | int }}MB"
+patroni_effective_cache_size: "{{ (patroni_memory_mb | int * 0.75) | int }}MB"
+patroni_maintenance_work_mem: "{{ [(patroni_memory_mb | int * 0.05) | int, 1024] | min }}MB"
+patroni_work_mem: 16MB
+patroni_max_connections: 200
+patroni_max_wal_size: 2GB
+patroni_min_wal_size: 512MB
+patroni_wal_keep_size: 1GB
+
+patroni_archive_command: "{{ ('pgbackrest --stanza=' ~ cluster_name ~ ' archive-push %p') if (pgbackrest_enabled | default(false) | bool) else '/bin/true' }}"
+
+patroni_postgresql_parameters:
+  max_connections: "{{ patroni_max_connections }}"
+  shared_buffers: "{{ patroni_shared_buffers }}"
+  effective_cache_size: "{{ patroni_effective_cache_size }}"
+  work_mem: "{{ patroni_work_mem }}"
+  maintenance_work_mem: "{{ patroni_maintenance_work_mem }}"
+  random_page_cost: "1.1"
+  effective_io_concurrency: "200"
+  checkpoint_timeout: 15min
+  checkpoint_completion_target: "0.9"
+  max_wal_size: "{{ patroni_max_wal_size }}"
+  min_wal_size: "{{ patroni_min_wal_size }}"
+  wal_level: replica
+  hot_standby: "on"
+  wal_log_hints: "on"
+  wal_keep_size: "{{ patroni_wal_keep_size }}"
+  max_wal_senders: 10
+  max_replication_slots: 10
+  archive_mode: "on"
+  archive_command: "{{ patroni_archive_command }}"
+  archive_timeout: 300
+  shared_preload_libraries: pg_stat_statements
+  track_io_timing: "on"
+  ssl: "on"
+  ssl_cert_file: /etc/ssl/certs/ssl-cert-snakeoil.pem
+  ssl_key_file: /etc/ssl/private/ssl-cert-snakeoil.key
+  password_encryption: scram-sha-256
+  idle_in_transaction_session_timeout: 300000
+  log_min_duration_statement: 1000
+  log_line_prefix: "%m [%p] %q%u@%d "
+  timezone: Etc/UTC
+
+patroni_postgresql_extra_parameters: {}
+
+patroni_initdb:
+  - encoding: UTF8
+  - locale: C.UTF-8
+  - data-checksums
+
+patroni_initdb_builtin_locale:
+  - locale-provider: builtin
+  - builtin-locale: C.UTF-8
+
+patroni_pg_hba_extra: []

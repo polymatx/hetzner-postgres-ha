@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch the Patroni role marker and reconcile PgBouncer
+
+[Path]
+PathModified=/var/lib/postgresql/pg-role-target
+Unit=pg-role-watch.service
+
+[Install]
+WantedBy=multi-user.target

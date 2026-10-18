@@ -1,0 +1,89 @@
+- name: Create the etcd group
+  ansible.builtin.group:
+    name: etcd
+    system: true
+
+- name: Create the etcd user
+  ansible.builtin.user:
+    name: etcd
+    group: etcd
+    system: true
+    home: "{{ etcd_data_dir }}"
+    create_home: false
+    shell: /usr/sbin/nologin
+
+- name: Create etcd directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: "{{ etcd_install_dir }}", owner: root, mode: "0755" }
+    - { path: "{{ etcd_data_dir }}", owner: etcd, mode: "0700" }
+
+- name: Download etcd
+  ansible.builtin.get_url:
+    url: "{{ etcd_download_base }}/{{ etcd_release }}.tar.gz"
+    dest: "{{ etcd_install_dir }}/{{ etcd_release }}.tar.gz"
+    checksum: "sha256:{{ etcd_download_base }}/SHA256SUMS"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Unpack etcd
+  ansible.builtin.unarchive:
+    src: "{{ etcd_install_dir }}/{{ etcd_release }}.tar.gz"
+    dest: "{{ etcd_install_dir }}"
+    remote_src: true
+    creates: "{{ etcd_install_dir }}/{{ etcd_release }}/etcd"
+    owner: root
+    group: root
+
+- name: Link the etcd binaries
+  ansible.builtin.file:
+    src: "{{ etcd_install_dir }}/{{ etcd_release }}/{{ item }}"
+    dest: "/usr/local/bin/{{ item }}"
+    state: link
+  loop:
+    - etcd
+    - etcdctl
+    - etcdutl
+  notify: Restart etcd
+
+- name: Configure etcd
+  ansible.builtin.template:
+    src: etcd.env.j2
+    dest: /etc/default/etcd
+    owner: root
+    group: etcd
+    mode: "0640"
+  notify: Restart etcd
+
+- name: Install the etcd service
+  ansible.builtin.template:
+    src: etcd.service.j2
+    dest: /etc/systemd/system/etcd.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart etcd
+
+- name: Start etcd on every node at once
+  ansible.builtin.systemd_service:
+    name: etcd
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Apply pending etcd restarts one node at a time
+  ansible.builtin.meta: flush_handlers
+
+- name: Wait for a healthy etcd cluster
+  ansible.builtin.command: etcdctl --endpoints=http://127.0.0.1:{{ etcd_client_port }} endpoint health --cluster
+  register: etcd_health
+  changed_when: false
+  retries: 30
+  delay: 2
+  until: etcd_health.rc == 0
