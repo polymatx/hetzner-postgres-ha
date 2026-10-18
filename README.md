@@ -20,6 +20,11 @@ It automates the architecture from
 the procedure behind a production billing database that has been through ten real leader changes.
 The whole stack is tested in CI on every commit, in Docker, without spending money on Hetzner, and the failover test has been run against real Hetzner servers.
 
+<p align="center">
+  <img src="docs/failover.gif" alt="make test-failover: the leader is powered off while a writer inserts a row every 0.2 s through the load balancer; a new leader takes over after about 35 seconds, writes resume, no acknowledged write is lost, and the old leader rejoins as a replica" width="820">
+</p>
+<p align="center"><sub><code>make test-failover</code> on the local Docker cluster, played at 2× speed</sub></p>
+
 ## What you get
 
 | | |
@@ -37,24 +42,7 @@ The whole stack is tested in CI on every commit, in Docker, without spending mon
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    app["Your app servers<br/>(attached to the same private network)"]
-    lb["Hetzner Load Balancer, private only, 10.0.0.10<br/>6432 PgBouncer · 5432 PostgreSQL · 5433 replicas<br/>health check GET :8008/primary every 3 s"]
-    app --> lb
-    subgraph spread["Placement group 'spread': three different physical hosts"]
-        n1["pg-ha-1 · 10.0.0.21<br/>PostgreSQL 18 leader<br/>Patroni · PgBouncer · etcd<br/>Volume for PGDATA"]
-        n2["pg-ha-2 · 10.0.0.22<br/>synchronous standby<br/>Patroni · PgBouncer · etcd<br/>Volume for PGDATA"]
-        n3["pg-ha-3 · 10.0.0.23<br/>asynchronous replica<br/>Patroni · PgBouncer · etcd<br/>Volume for PGDATA"]
-    end
-    lb ==>|"200: leader"| n1
-    lb -.->|"503"| n2
-    lb -.->|"503"| n3
-    n1 -->|"synchronous WAL stream"| n2
-    n1 -->|"WAL stream"| n3
-    s3[("Hetzner Object Storage, other location<br/>pgBackRest WAL archive and backups, AES-256")]
-    n1 -->|"archive-push"| s3
-```
+![Architecture: the application connects to a private Hetzner Load Balancer that health-checks Patroni and routes only to the leader; three nodes in a spread placement group run PostgreSQL 18, Patroni, PgBouncer and etcd with PGDATA on Volumes; the leader replicates synchronously to one standby and asynchronously to the other, and pgBackRest ships WAL and backups to Hetzner Object Storage in another location](docs/architecture.svg)
 
 How it fails over, in four independent mechanisms:
 
@@ -225,6 +213,8 @@ Kept as in the post: `ttl 30 / loop_wait 10 / retry_timeout 10`, `synchronous_mo
 ## Local test and CI
 
 `make test` runs the whole stack on your machine: three systemd containers built from Ubuntu 24.04 act as the servers, HAProxy plays the Hetzner Load Balancer with the same `/primary` health check, and [SeaweedFS](https://github.com/seaweedfs/seaweedfs) plays Object Storage over TLS. It provisions the cluster with the same Ansible roles, checks that a second run changes nothing, runs `failover-test`, takes a backup and runs `restore-test`. `make test-down` removes everything. It needs Docker and takes about 5 minutes.
+
+The GIF at the top is `docs/demo.tape` recorded with [VHS](https://github.com/charmbracelet/vhs) after `make test-up test-provision`.
 
 GitHub Actions runs on every push: `terraform fmt` and `validate`, `tflint` with all rules, `ansible-lint` with the production profile, `yamllint`, `shellcheck`, and the full Docker test.
 

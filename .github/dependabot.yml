@@ -1,0 +1,41 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      github-actions:
+        patterns: ["*"]
+
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      python-tools:
+        patterns: ["*"]
+
+  - package-ecosystem: terraform
+    directory: /terraform
+    schedule:
+      interval: weekly
+    groups:
+      terraform-providers:
+        patterns: ["*"]
+
+  - package-ecosystem: docker
+    directory: /tests
+    schedule:
+      interval: weekly
+    groups:
+      test-images:
+        patterns: ["*"]
+
+  - package-ecosystem: docker-compose
+    directory: /tests
+    schedule:
+      interval: weekly
+    groups:
+      test-services:
+        patterns: ["*"]

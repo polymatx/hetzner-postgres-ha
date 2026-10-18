@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/polymatx/hetzner-postgres-ha/security/policy
+    about: An exposed port, a leaked secret, an over-broad pg_hba rule. Please report privately, not as an issue.

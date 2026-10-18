@@ -108,6 +108,7 @@ shellcheck:
 	$(PYTHON) -c "import ast; ast.parse(open('scripts/cluster.py').read())"
 
 test: test-up test-provision test-idempotence test-failover test-backup test-restore
+	@$(MAKE) --no-print-directory test-idempotence
 	@echo "local test passed"
 
 tests/.certs/public.crt:
@@ -128,13 +129,13 @@ test-idempotence: deps
 	if echo "$$out" | grep -qE 'changed=[1-9]'; then echo "not idempotent:"; echo "$$out" | grep -B3 '^changed:'; exit 1; fi
 
 test-failover:
-	$(CLUSTER) -i $(TEST_INVENTORY) failover-test
+	@$(CLUSTER) -i $(TEST_INVENTORY) failover-test
 
 test-backup:
-	$(CLUSTER) -i $(TEST_INVENTORY) backup --type diff
+	@$(CLUSTER) -i $(TEST_INVENTORY) backup --type diff
 
 test-restore:
-	$(CLUSTER) -i $(TEST_INVENTORY) restore-test
+	@$(CLUSTER) -i $(TEST_INVENTORY) restore-test
 
 test-logs:
 	-for n in 1 2 3; do echo "=== pg-ha-$$n"; docker exec hpha-pg-ha-$$n journalctl --no-pager -n 80 -u patroni -u etcd -u pgbouncer; done

@@ -74,6 +74,8 @@ jobs:
         run: make test-backup
       - name: Point-in-time restore
         run: make test-restore
+      - name: Check idempotence after failover and restore
+        run: make test-idempotence
       - name: Logs
         if: failure()
         run: make test-logs

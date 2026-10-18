@@ -141,6 +141,13 @@ class Cluster:
             raise Failure(f"Hetzner API {method} {path} failed: HTTP {error.code} {error.read().decode()[:200]}")
 
 
+def short_error(detail):
+    text = detail.replace("psql: error: ", "").strip()
+    if "failed: " in text:
+        text = text.rsplit("failed: ", 1)[1]
+    return text[:70]
+
+
 def print_members(members):
     log(f"  {'member':<14} {'role':<14} {'state':<11} {'TL':>3}  {'lag':>8}")
     for name in sorted(members):
@@ -267,6 +274,7 @@ def cmd_failover_test(cluster, args):
 
     new_leader = new_leader_at = None
     last_poll = 0.0
+    next_tick = requested + 5
     while True:
         if "error" in power:
             writer.stop()
@@ -283,6 +291,11 @@ def cmd_failover_test(cluster, args):
                 new_leader, new_leader_at = leader, time.monotonic()
         if new_leader and resumed and "done" in power and time.monotonic() - max(new_leader_at, resumed[0]) > 5:
             break
+        if now >= next_tick and not (new_leader and resumed):
+            failed = sum(1 for r in writer.snapshot() if r[0] >= requested and r[1] == "fail")
+            status = f"{new_leader} is the new leader" if new_leader else "no new leader yet"
+            log(f"  {now - requested:4.0f} s after the power-off request: {failed} failed writes, {status}")
+            next_tick += 5
         time.sleep(0.2)
 
     writer.stop()
@@ -295,11 +308,12 @@ def cmd_failover_test(cluster, args):
     stored = cluster.lb_psql(writer_node, f"select id from failover_probe where run = '{run_id}'")
     stored_ids = {int(x) for x in stored.split()} if stored else set()
     lost = sorted(acked_ids - stored_ids)
+    cluster.lb_psql(writer_node, "drop table if exists failover_probe")
 
     log()
     log(f"Timeline (0 s = the last write {old_leader} acknowledged):")
     log(f"[{0.0:6.1f}s] last acknowledged write before the outage")
-    log(f"[{first_fail[0] - t0:6.1f}s] first failed write: {first_fail[2][:90]}")
+    log(f"[{first_fail[0] - t0:6.1f}s] first failed write ({short_error(first_fail[2])})")
     log(f"[{new_leader_at - t0:6.1f}s] {new_leader} is the new leader")
     log(f"[{resumed[0] - t0:6.1f}s] writes are succeeding again")
     log()
@@ -377,12 +391,12 @@ def cmd_restore_test(cluster, args):
         leader.run("/usr/local/bin/pgbackrest-backup full", timeout=3600)
 
     log(f"Writing marker rows on the leader {leader_name}...")
-    cluster.local_psql(leader, "create table if not exists restore_probe (label text primary key, at timestamptz not null default clock_timestamp())")
-    cluster.local_psql(leader, f"insert into restore_probe(label) values ('before-{run_id}')")
+    cluster.local_psql(leader, "create table if not exists restore_probe (label text primary key, at timestamptz not null default clock_timestamp())", db="postgres")
+    cluster.local_psql(leader, f"insert into restore_probe(label) values ('before-{run_id}')", db="postgres")
     time.sleep(1.5)
-    target_time = cluster.local_psql(leader, "select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || '+00'")
+    target_time = cluster.local_psql(leader, "select to_char(clock_timestamp() at time zone 'UTC', 'YYYY-MM-DD HH24:MI:SS.US') || '+00'", db="postgres")
     time.sleep(1.5)
-    cluster.local_psql(leader, f"insert into restore_probe(label) values ('after-{run_id}')")
+    cluster.local_psql(leader, f"insert into restore_probe(label) values ('after-{run_id}')", db="postgres")
     leader.run(f"runuser -u postgres -- pgbackrest --stanza={stanza} check", timeout=600)
     log(f"  row before-{run_id} committed before {target_time}")
     log(f"  row after-{run_id}  committed after it; both are archived")
@@ -402,7 +416,7 @@ for i in $(seq 1 300); do
   [ "$(runuser -u postgres -- psql -h /tmp -p 5499 -XAtqc 'select pg_is_in_recovery()' postgres 2>/dev/null)" = f ] && break
   sleep 2
 done
-runuser -u postgres -- psql -h /tmp -p 5499 -XAtqc "select label from restore_probe where label like '%-{run_id}' order by label" {cluster.db}
+runuser -u postgres -- psql -h /tmp -p 5499 -XAtqc "select label from restore_probe where label like '%-{run_id}' order by label" postgres
 """
     cleanup = f"""
 pg_ctl=$(ls -d /usr/lib/postgresql/*/bin/pg_ctl | sort -V | tail -n 1)
@@ -416,6 +430,7 @@ rm -rf {data_dir} {data_dir}.log
         result = target.run(script, check=False, timeout=3600)
     finally:
         target.run(cleanup, check=False, timeout=300)
+        cluster.local_psql(leader, "drop table if exists restore_probe", db="postgres")
     took = time.monotonic() - started
     if result.returncode != 0:
         raise Failure(f"restore failed: {result.stderr.strip()[-1500:] or result.stdout.strip()[-1500:]}")

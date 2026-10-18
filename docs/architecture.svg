@@ -1,0 +1,118 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="676" viewBox="0 0 960 676" role="img" aria-labelledby="title desc">
+  <title id="title">hetzner-postgres-ha architecture</title>
+  <desc id="desc">Applications connect to a private Hetzner Load Balancer at 10.0.0.10 that health-checks Patroni's /primary endpoint and sends traffic only to the leader. Three nodes in a spread placement group each run PostgreSQL 18 with Patroni, PgBouncer and an etcd member, with PGDATA on a Volume. The leader streams WAL synchronously to one standby and asynchronously to the other, and pgBackRest archives WAL and backups to Hetzner Object Storage in another location.</desc>
+  <style>
+    .t { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #1f2328; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .m { fill: #59636e; }
+    .b { font-weight: 600; }
+    .box { fill: #f6f8fa; stroke: #d1d9e0; stroke-width: 1.5; }
+    .lead { fill: #f6f8fa; stroke: #1a7f37; stroke-width: 2.5; }
+    .grp { fill: none; stroke: #8c959f; stroke-width: 1.5; stroke-dasharray: 7 6; }
+    .ln { fill: none; stroke: #59636e; stroke-width: 1.8; }
+    .dash { stroke-dasharray: 6 5; }
+    .ok { fill: none; stroke: #1a7f37; stroke-width: 3; }
+    .blue { fill: none; stroke: #0969da; stroke-width: 2.2; }
+    .okf { fill: #1a7f37; }
+    .bluef { fill: #0969da; }
+    .lnf { fill: #59636e; }
+    .pill-lead { fill: #1a7f37; }
+    .pill-sync { fill: #0969da; }
+    .pill-rep { fill: #6e7781; }
+    .pill-t { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; fill: #ffffff; font-weight: 700; font-size: 11px; letter-spacing: 0.06em; }
+    .okt { fill: #1a7f37; }
+    .bluet { fill: #0969da; }
+    @media (prefers-color-scheme: dark) {
+      .t { fill: #f0f6fc; }
+      .m { fill: #9198a1; }
+      .box { fill: #151b23; stroke: #3d444d; }
+      .lead { fill: #151b23; stroke: #3fb950; }
+      .grp { stroke: #656c76; }
+      .ln { stroke: #9198a1; }
+      .ok { stroke: #3fb950; }
+      .blue { stroke: #4493f8; }
+      .okf { fill: #3fb950; }
+      .bluef { fill: #4493f8; }
+      .lnf { fill: #9198a1; }
+      .pill-lead { fill: #238636; }
+      .pill-sync { fill: #1f6feb; }
+      .pill-rep { fill: #656c76; }
+      .okt { fill: #3fb950; }
+      .bluet { fill: #4493f8; }
+    }
+  </style>
+  <defs>
+    <marker id="a-ln" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" class="lnf"/>
+    </marker>
+    <marker id="a-ok" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" class="okf"/>
+    </marker>
+    <marker id="a-blue" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" class="bluef"/>
+    </marker>
+  </defs>
+
+  <rect x="350" y="14" width="260" height="58" rx="10" class="box"/>
+  <text x="480" y="39" text-anchor="middle" class="t b" font-size="15">Your application</text>
+  <text x="480" y="59" text-anchor="middle" class="t m" font-size="12.5">servers in the same private network</text>
+
+  <path d="M480 72 L480 106" class="ln" marker-end="url(#a-ln)"/>
+
+  <rect x="230" y="110" width="500" height="94" rx="10" class="box"/>
+  <text x="480" y="137" text-anchor="middle" class="t" font-size="15"><tspan class="b">Hetzner Load Balancer</tspan><tspan class="m" dx="6">· private only · 10.0.0.10</tspan></text>
+  <text x="480" y="162" text-anchor="middle" class="t mono" font-size="13">:6432 PgBouncer · :5432 PostgreSQL · :5433 replicas</text>
+  <text x="480" y="187" text-anchor="middle" class="t m" font-size="12.5">health check GET :8008/primary every 3 s · only the leader answers 200</text>
+
+  <path d="M480 204 L480 288" class="ok" marker-end="url(#a-ok)"/>
+  <text x="492" y="236" class="t okt b" font-size="13">200 · leader</text>
+  <path d="M400 204 L176 288" class="ln dash" marker-end="url(#a-ln)"/>
+  <text x="262" y="236" text-anchor="middle" class="t m" font-size="13">503</text>
+  <path d="M560 204 L784 288" class="ln dash" marker-end="url(#a-ln)"/>
+  <text x="698" y="236" text-anchor="middle" class="t m" font-size="13">503</text>
+
+  <rect x="20" y="252" width="920" height="250" rx="14" class="grp"/>
+  <text x="38" y="489" class="t m" font-size="12">placement group “spread” · three physical hosts · etcd quorum is 2 of 3</text>
+
+  <rect x="40" y="292" width="240" height="180" rx="10" class="box"/>
+  <text x="58" y="320" class="t b" font-size="14">pg-ha-2 · 10.0.0.22</text>
+  <rect x="58" y="331" width="110" height="22" rx="11" class="pill-sync"/>
+  <text x="113" y="346" text-anchor="middle" class="pill-t">SYNC STANDBY</text>
+  <text x="58" y="384" class="t" font-size="13">PostgreSQL 18 + Patroni</text>
+  <text x="58" y="408" class="t" font-size="13">PgBouncer · etcd member</text>
+  <text x="58" y="432" class="t m" font-size="13">Volume: PGDATA</text>
+  <text x="58" y="456" class="t m" font-size="12">promoted if the leader dies</text>
+
+  <rect x="360" y="292" width="240" height="180" rx="10" class="lead"/>
+  <text x="378" y="320" class="t b" font-size="14">pg-ha-1 · 10.0.0.21</text>
+  <rect x="378" y="331" width="72" height="22" rx="11" class="pill-lead"/>
+  <text x="414" y="346" text-anchor="middle" class="pill-t">LEADER</text>
+  <text x="378" y="384" class="t" font-size="13">PostgreSQL 18 + Patroni</text>
+  <text x="378" y="408" class="t" font-size="13">PgBouncer · etcd member</text>
+  <text x="378" y="432" class="t m" font-size="13">Volume: PGDATA</text>
+  <text x="378" y="456" class="t m" font-size="12">holds the 30 s lease in etcd</text>
+
+  <rect x="680" y="292" width="240" height="180" rx="10" class="box"/>
+  <text x="698" y="320" class="t b" font-size="14">pg-ha-3 · 10.0.0.23</text>
+  <rect x="698" y="331" width="78" height="22" rx="11" class="pill-rep"/>
+  <text x="737" y="346" text-anchor="middle" class="pill-t">REPLICA</text>
+  <text x="698" y="384" class="t" font-size="13">PostgreSQL 18 + Patroni</text>
+  <text x="698" y="408" class="t" font-size="13">PgBouncer · etcd member</text>
+  <text x="698" y="432" class="t m" font-size="13">Volume: PGDATA</text>
+  <text x="698" y="456" class="t m" font-size="12">serves :5433 reads</text>
+
+  <path d="M358 382 L284 382" class="blue" marker-end="url(#a-blue)"/>
+  <text x="320" y="370" text-anchor="middle" class="t bluet b" font-size="12">sync</text>
+  <text x="320" y="401" text-anchor="middle" class="t bluet" font-size="12">WAL</text>
+  <path d="M602 382 L676 382" class="ln" marker-end="url(#a-ln)"/>
+  <text x="640" y="370" text-anchor="middle" class="t m b" font-size="12">async</text>
+  <text x="640" y="401" text-anchor="middle" class="t m" font-size="12">WAL</text>
+
+  <path d="M480 472 L480 556" class="ln" marker-end="url(#a-ln)"/>
+  <text x="492" y="534" class="t m" font-size="12.5">pgBackRest archive-push and backups</text>
+
+  <path d="M290 572 L290 640 A190 16 0 0 0 670 640 L670 572" class="box"/>
+  <ellipse cx="480" cy="572" rx="190" ry="16" class="box"/>
+  <text x="480" y="612" text-anchor="middle" class="t b" font-size="14">Hetzner Object Storage · another location</text>
+  <text x="480" y="634" text-anchor="middle" class="t m" font-size="12.5">WAL archive + full and differential backups, AES-256</text>
+</svg>

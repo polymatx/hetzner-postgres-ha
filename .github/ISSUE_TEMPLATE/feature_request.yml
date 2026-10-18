@@ -1,0 +1,23 @@
+name: Feature request
+description: Something the cluster should do that it doesn't
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What do you need?
+      description: The problem you are solving, not only the solution you have in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: How could it work?
+      description: Which Terraform variable, Ansible role or make target would change.
+  - type: checkboxes
+    id: roadmap
+    attributes:
+      label: Roadmap
+      options:
+        - label: I checked the Roadmap and Limitations sections of the README
+          required: true

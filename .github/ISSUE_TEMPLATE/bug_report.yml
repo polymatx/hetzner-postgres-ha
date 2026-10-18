@@ -1,0 +1,55 @@
+name: Bug report
+description: Something doesn't work as the README says
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Found a port reachable from the internet, a leaked secret or a way around Patroni's REST API password?
+        Please don't open an issue. Report it privately as described in the
+        [security policy](https://github.com/polymatx/hetzner-postgres-ha/security/policy).
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you run, what did you expect, what happened instead?
+    validations:
+      required: true
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where does it happen?
+      multiple: true
+      options:
+        - make up / terraform apply
+        - Ansible provisioning
+        - failover-test
+        - backup or restore-test
+        - make test (Docker)
+        - Running cluster (failover, PgBouncer, pgBackRest, etcd)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Output
+      description: The failing Ansible task or command output. Remove passwords, keys and tokens.
+      render: shell
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Release tag or commit of hetzner-postgres-ha.
+      placeholder: v0.1.0
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Setup
+      description: Location, server type, node_count, and your Terraform, ansible-core and OS versions.
+      placeholder: hel1, cpx22, 3 nodes, Terraform 1.16, ansible-core 2.21, macOS 26
+    validations:
+      required: true
