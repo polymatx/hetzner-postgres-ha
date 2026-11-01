@@ -41,7 +41,7 @@ services:
         ipv4_address: 10.77.0.23
 
   lb:
-    image: haproxy:3.2-alpine
+    image: haproxy:3.4-alpine
     container_name: hpha-lb
     volumes:
       - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
@@ -50,7 +50,7 @@ services:
         ipv4_address: 10.77.0.10
 
   s3:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.50
     container_name: hpha-s3
     command:
       - server
