@@ -50,7 +50,7 @@ services:
         ipv4_address: 10.77.0.10
 
   s3:
-    image: chrislusf/seaweedfs:4.48
+    image: chrislusf/seaweedfs:4.50
     container_name: hpha-s3
     command:
       - server
